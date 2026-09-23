@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Rhino 天地图卫星地形框选</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    html,body,#map{height:100%;margin:0}body{font:14px/1.45 system-ui,"Microsoft YaHei",sans-serif}.panel{position:absolute;z-index:1000;top:16px;right:16px;width:310px;background:#111c;color:#fff;border:1px solid #ffffff30;border-radius:12px;padding:14px 16px;backdrop-filter:blur(8px)}
+    h1{font-size:17px;margin:0 0 8px}.hint{color:#d7e5ff;margin-bottom:10px}.stats{white-space:pre-line;background:#0006;border-radius:8px;padding:9px;margin:8px 0;min-height:42px}.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}button{border:0;border-radius:8px;padding:10px 12px;font-weight:700;cursor:pointer;background:#2f80ed;color:white}button:disabled{opacity:.45;cursor:not-allowed}.secondary{background:#566273}.ok{color:#7df2a7;margin-top:8px}.error{color:#ffb5b5;margin-top:8px}
+    .leaflet-control-attribution{font-size:11px!important}@media(max-width:600px){.panel{top:auto;left:10px;right:10px;bottom:22px;width:auto;padding:12px 14px}.hint{margin-bottom:6px}.stats{margin:6px 0}}
+  </style>
+</head>
+<body>
+<div id="map"></div>
+<section class="panel">
+  <h1>Rhino 天地图卫星地形框选</h1>
+  <div class="hint">缩放、平移到目标区域，点击“开始框选”后拖出矩形。确认后以 WGS84 范围查询 DEM、影像和 OSM 数据。</div>
+  <div id="stats" class="stats">正在连接天地图影像服务…</div>
+  <div class="actions">
+    <button id="draw" disabled>开始框选</button>
+    <button id="clear" class="secondary" disabled>清除范围</button>
+    <button id="save" disabled style="grid-column:1 / -1">确认此范围</button>
+  </div>
+  <div id="message" class="ok"></div>
+</section>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const stats=document.getElementById('stats'),message=document.getElementById('message');
+const drawButton=document.getElementById('draw'),clearButton=document.getElementById('clear'),saveButton=document.getElementById('save');
+if(!window.L){stats.textContent='地图组件加载失败，请检查网络后重新打开。';throw new Error('Leaflet failed to load');}
+
+const attribution='<a href="https://www.tianditu.gov.cn/" target="_blank" rel="noreferrer">国家地理信息公共服务平台 天地图</a>';
+const map=L.map('map',{center:[30.57,104.06],zoom:13,zoomControl:true});
+const imagery=L.tileLayer('/tiles/img/{z}/{x}/{y}',{maxZoom:18,tileSize:256,attribution}).addTo(map);
+L.tileLayer('/tiles/cia/{z}/{x}/{y}',{maxZoom:18,tileSize:256,opacity:0.9}).addTo(map);
+imagery.once('tileload',()=>{stats.textContent='天地图影像已连接。缩放、平移到目标区域后开始框选。';drawButton.disabled=false;});
+imagery.on('tileerror',()=>{stats.textContent='天地图影像瓦片加载失败：本机代理无法取得影像，请检查服务端 key 权限、配额或网络。';});
+
+let current=null,drawing=false,startPoint=null,rectangle=null;
+function updateStats(bounds){
+  const sw=bounds.getSouthWest(),ne=bounds.getNorthEast();
+  const west=sw.lng,east=ne.lng,south=sw.lat,north=ne.lat;
+  const width=111320*Math.cos((south+north)/2*Math.PI/180)*(east-west),height=111320*(north-south);
+  stats.textContent=`宽度：${(width/1000).toFixed(2)} km\n高度：${(height/1000).toFixed(2)} km\nWGS84：${west.toFixed(6)}, ${south.toFixed(6)} → ${east.toFixed(6)}, ${north.toFixed(6)}`;
+  current={bbox:{west,south,east,north}};
+  saveButton.disabled=false;clearButton.disabled=false;message.textContent='';message.className='ok';
+}
+function finishDrawing(point){
+  if(!drawing||!startPoint)return;
+  drawing=false;map.dragging.enable();map.getContainer().style.cursor='';
+  const bounds=L.latLngBounds(startPoint,point);
+  if(rectangle)map.removeLayer(rectangle);
+  rectangle=L.rectangle(bounds,{color:'#2f80ed',weight:3,fillColor:'#2f80ed',fillOpacity:0.15}).addTo(map);
+  updateStats(bounds);startPoint=null;drawButton.disabled=false;
+}
+drawButton.onclick=()=>{if(rectangle){map.removeLayer(rectangle);rectangle=null;}current=null;saveButton.disabled=true;clearButton.disabled=true;drawing=true;map.dragging.disable();map.getContainer().style.cursor='crosshair';message.textContent='拖动鼠标框选场地…';};
+map.on('mousedown',event=>{if(drawing){startPoint=event.latlng;}});
+map.on('mousemove',event=>{if(drawing&&startPoint){const bounds=L.latLngBounds(startPoint,event.latlng);if(rectangle)rectangle.setBounds(bounds);else rectangle=L.rectangle(bounds,{color:'#2f80ed',weight:3,fillColor:'#2f80ed',fillOpacity:0.15}).addTo(map);}});
+map.on('mouseup',event=>finishDrawing(event.latlng));
+window.addEventListener('mouseup',event=>{if(drawing&&startPoint)finishDrawing(map.mouseEventToLatLng(event));});
+clearButton.onclick=()=>{drawing=false;startPoint=null;map.dragging.enable();map.getContainer().style.cursor='';if(rectangle){map.removeLayer(rectangle);rectangle=null;}current=null;stats.textContent='尚未框选';saveButton.disabled=true;clearButton.disabled=true;message.textContent='';};
+saveButton.onclick=async()=>{if(!current)return;saveButton.disabled=true;message.textContent='正在保存…';try{const payload={bbox:current.bbox,map_zoom:map.getZoom(),map_provider:'tianditu',coordinate_conversion:'Tianditu img_w WMTS in EPSG:900913; Leaflet bounds exported as WGS84 EPSG:4326',saved_at:new Date().toISOString()};const response=await fetch('/selection',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),data=await response.json();if(!response.ok)throw new Error(data.error||'保存失败');message.textContent='范围已保存，可返回 Codex 继续生成 Rhino 地形。';}catch(error){message.textContent='保存失败：'+error.message;message.className='error';saveButton.disabled=false;}};
+</script>
+</body>
+</html>

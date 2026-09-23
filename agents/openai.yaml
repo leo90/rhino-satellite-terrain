@@ -1,0 +1,4 @@
+interface:
+  display_name: "Rhino Satellite Terrain"
+  short_description: "框选卫星地图并在 Rhino 中生成真实 DEM 地形"
+  default_prompt: "在卫星地图中框选一个区域，并把真实地形生成到 Rhino。"

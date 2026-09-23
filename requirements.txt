@@ -1,0 +1,5 @@
+numpy>=2.0
+Pillow>=11.0
+requests>=2.32
+rhino3dm>=8.0
+
