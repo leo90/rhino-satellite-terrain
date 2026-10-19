@@ -521,7 +521,8 @@ def build_model(
         )
         mesh.SetTextureCoordinates(mapping, rhino3dm.Transform.Identity(), False)
         material = rhino3dm.Material()
-        material.Name = "Tianditu Satellite Imagery"
+        # Rhino can reuse a same-named material from a previously cleared site.
+        material.Name = "Tianditu_" + hashlib.sha256(texture_path.read_bytes()).hexdigest()[:16]
         material.DiffuseColor = (255, 255, 255, 255)
         material.SetBitmapTexture(str(texture_path))
         texture_assigned = material.GetBitmapTexture() is not None
@@ -650,9 +651,14 @@ def main() -> int:
                 f"Imagery quality gate failed: {texture_resolution:.3f} m/px exceeds "
                 f"{args.max_ground_resolution:.3f} m/px. Draw a smaller selection or raise --max-texture/--max-sat-tiles."
             )
-        texture_path = out_path.with_name(out_path.stem + "_satellite.jpg")
+        texture_buffer = io.BytesIO()
+        sat_image.save(texture_buffer, "JPEG", quality=90, optimize=True)
+        texture_data = texture_buffer.getvalue()
+        texture_id = hashlib.sha256(texture_data).hexdigest()[:16]
+        # Rhino also resolves/caches bitmaps by filename across imported models.
+        texture_path = out_path.with_name(out_path.stem + "_satellite_" + texture_id + ".jpg")
         texture_path.parent.mkdir(parents=True, exist_ok=True)
-        sat_image.save(texture_path, "JPEG", quality=90, optimize=True)
+        texture_path.write_bytes(texture_data)
 
     npz_path = out_path.with_name(out_path.stem + "_elevation.npz")
     np.savez_compressed(npz_path, elevation=elevation, bbox=np.array([bbox[k] for k in ("west", "south", "east", "north")]))

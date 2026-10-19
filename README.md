@@ -87,7 +87,7 @@ TIANDITU_KEY=在这里填入你的天地图tk
 
 生成器会在 `.3dm` 旁输出：
 
-- `*_satellite.jpg`：天地图卫星贴图
+- `*_satellite_<hash>.jpg`：天地图卫星贴图；文件名包含实际 JPEG 内容的 SHA256 前 16 位，避免 Rhino 复用同名旧贴图。具体路径读取报告中的 `texture_file`。
 - `*_elevation.npz`：采样高程数据
 - `*.report.json`：范围、DEM/影像分辨率、网格统计、OSM 要素数、来源与限制
 
